@@ -1,5 +1,10 @@
 body {
+  font-size: 10px;
   font-family:verdana;
+  line-height: 15px;
+}
+body * {
+  vertical-align: top;
 }
 form {
   padding:0;
@@ -42,7 +47,18 @@ table.wide tr.res_alt td {
 table.wide tr.code_404 td {
   background:#F99;
 }
-
+table.wide tr td a {
+ display: inline-block;
+ max-width: 75%;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ line-height: 15px;
+ height: 15px;
+}
+table.wide tr td small {
+ line-height: 15px;
+ height: 15px;
+}
 table.thin {
 }
 table.thin tr th {

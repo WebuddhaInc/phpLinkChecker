@@ -1,6 +1,12 @@
 <?php
 
 // ------------------------------------------------
+// Inspect
+  function inspect(){
+    echo '<pre>' . print_r( func_get_args(), true ) . '</pre>';
+  }
+
+// ------------------------------------------------
 // Configuration
   define('LC_INT_LIMIT',  500);
   define('LC_EXT_LIMIT',  100);
@@ -96,7 +102,7 @@
     <form action="<?= $baseName ?>" name="submitform" method="POST">
       <label for="url">Enter URL:</label>
         <input name="url" id="url" size="40" value="<?= ($uri ? $uri : 'ie: http://www.website.com/') ?>" onclick="if(/^ie:/.test(this.value))this.value='';" />
-      <input type="submit" value="  Process  " />
+      <input type="submit" valuve="  Process  " />
     </form>
   </fieldset>
 <?php
@@ -128,6 +134,8 @@
         $intHistory = Array();
 
       // Split Links
+        $intQueue[ $uri ] = array();
+        $extQueue[ $uri ] = array();
         for($i=0;$i<count($urlList);$i++){
           if( !strlen(trim($urlList[$i])) )
             continue;
@@ -136,9 +144,9 @@
           if( preg_match('/^[\w\-\d]+\.[\w\-\d]+$/',$queInfo['host']) )
             $queInfo['host'] = 'www.'.$queInfo['host'];
           if( $urlHost == $queInfo['host'] )
-            $intQueue[] = $urlList[$i];
+            $intQueue[ $uri ][] = $urlList[$i];
           else
-            $extQueue[] = $urlList[$i];
+            $extQueue[ $uri ][] = $urlList[$i];
         }
 
       // Header
@@ -187,8 +195,6 @@
               // Start External Table
                 echo "<h3>Processing ".count($extQueue)." External Links found</h3>";
                 print '<pre>';print $urlHost;print '</pre>';
-                // print '<pre>';print_r($intQueue);print '</pre>';
-                // print '<pre>';print_r($extQueue);print '</pre>';
                 echo "<table summary=\"Results\" class=\"wide\">\n";
                 echo "<tr>";
                   echo "<th>#</th>";
@@ -206,15 +212,33 @@
                 $rowNumber = 0;
                 continue;
             }
-          } elseif( !count($extQueue) || ($rowNumber >= LC_EXT_LIMIT) ){
+          }
+          elseif( !count($extQueue) || ($rowNumber >= LC_EXT_LIMIT) ){
             break;
           }
 
         // Link
-          if( $intMode )
-            $queLink = trim(array_shift($intQueue));
-          else
-            $queLink = trim(array_shift($extQueue));
+          $queSource = null;
+          if( $intMode ){
+            do {
+              reset($intQueue);
+              $queSource = key($intQueue);
+              $queLink = trim(array_shift($intQueue[$queSource]));
+              if( empty($intQueue[$queSource]) ){
+                unset( $intQueue[$queSource] );
+              }
+            } while( (empty($queLink) || in_array($queLink, $intHistory)) && !empty($intQueue) && $runaway++ < 10 );
+          }
+          else {
+            do {
+              reset($extQueue);
+              $queSource = key($extQueue);
+              $queLink = trim(array_shift($extQueue[$queSource]));
+              if( empty($extQueue[$queSource]) ){
+                unset( $extQueue[$queSource] );
+              }
+            } while( (empty($queLink) || in_array($queLink, $extHistory)) && !empty($extQueue) && $runaway++ < 10 );
+          }
           if( !strlen($queLink) )
             continue;
 
@@ -245,7 +269,7 @@
             $urlPrint = '<a href="'.$queLink.'" target="_blank">'.rawurldecode($queLink).'</a>';
 
         // Extract Links
-          if( $intMode && eregi("^text/html", $contentType) && ($code==200) ){ // ereg("^(2|3)+[0-9]{2}", $code) ){
+          if( $intMode && eregi("^text/html", $contentType) && ($code==200) ){
             if( $urlHost == $queInfo['host'] ){
               $resLinks = GetPageLinks($queLink);
               if(is_array($resLinks)){
@@ -255,11 +279,20 @@
                   if( preg_match('/^[\w\-\d]+\.[\w\-\d]+$/',$valInfo['host']) )
                     $valInfo['host'] = 'www.'.$valInfo['host'];
                   if( $urlHost == $valInfo['host'] ){
-                    if( !in_array($val,$intQueue) && !in_array($val,$intHistory) && ($val != $queLink) )
-                      $intQueue[] = $val;
-                  } else {
-                    if( !in_array($val,$extQueue) && !in_array($val,$extHistory) && ($val != $queLink) )
-                      $extQueue[] = $val;
+                    if( !isset($intQueue[$queLink]) ){
+                      $intQueue[$queLink] = array();
+                    }
+                    if( ($val != $queLink) && !inExistingQueue($val, $intQueue, $intHistory) ){
+                      $intQueue[$queLink][] = $val;
+                    }
+                  }
+                  else {
+                    if( !isset($extQueue[$queLink]) ){
+                      $extQueue[$queLink] = array();
+                    }
+                    if( ($val != $queLink) && !inExistingQueue($val, $extQueue, $extHistory) ){
+                      $extQueue[$queLink][] = $val;
+                    }
                   }
                 }
               } else
@@ -271,11 +304,17 @@
         // Microtime
           $loadtime = microtime(true) - $stamp;
 
+        // Count Remaining
+          $intQueueTotal = 0;
+          $extQueueTotal = 0;
+          array_walk_recursive($intQueue, function($key) use (&$intQueueTotal){ $intQueueTotal++; });
+          array_walk_recursive($extQueue, function($key) use (&$extQueueTotal){ $extQueueTotal++; });
+
         // Print to Log
           if( $logActive )
             fputcsv( $log_fh, array(
               $rowNumber,
-              ( $intMode ? count($intQueue) : count($extQueue) ),
+              ( $intMode ? $intQueueTotal : $extQueueTotal ),
               $code,
               (array_key_exists($code,$errCode) ? $errCode[$code] : 'Unknown'),
               $contentType,
@@ -288,12 +327,16 @@
           echo '
             <tr class="res_'.($code==200?'ok':'alt').' code_'.$code.'">
             <td>'.(++$rowNumber).'</td>
-            <td>'.count($intQueue).'</td>
-            <td>'.count($extQueue).'</td>
+            <td>'.$intQueueTotal.'</td>
+            <td>'.$extQueueTotal.'</td>
             <td>'.$code.'</td>
             <td>'.(array_key_exists($code,$errCode) ? $errCode[$code] : 'Unknown').'</td>
             <td>'.$contentType.'</td>
-            <td>'.$urlPrint.'</td>
+            <td>
+              '.$urlPrint.'
+              <br>
+              <small>found on <a href="'.$queSource.'" target="_blank">'.rawurldecode($queSource).'</a></small>
+            </td>
             <td>'.(is_null($resLinks)?'&nbsp;':count($resLinks)).'</td>
             <td>'.round($loadtime,3).'s</td>
           </tr>';
@@ -302,15 +345,23 @@
         // Increment Log
           $statCode[$code]++;
           $statContentType[$contentType]++;
-          if( $intMode )
+          if( $intMode ){
             $intHistory[] = $queLink;
-          else
+          }
+          else {
             $extHistory[] = $queLink;
+          }
 
       }
 
       // Processing Table
         echo "</table>\n";
+
+      // Count Remaining
+        $intQueueTotal = 0;
+        $extQueueTotal = 0;
+        array_walk_recursive($intQueue, function($key) use (&$intQueueTotal){ $intQueueTotal++; });
+        array_walk_recursive($extQueue, function($key) use (&$extQueueTotal){ $extQueueTotal++; });
 
       // Notice
         if( $rowNumber >= LC_EXT_LIMIT )
@@ -326,8 +377,9 @@
             $dump_fh = fopen($logBase.'-intqueue.txt','a+');
             if( !$dump_fh )
               die('Failed to open '.$logBase.'-intqueue.txt');
-            for($i=0;$i<count($intQueue);$i++)
-              fputs( $dump_fh, $intQueue[$i]."\n" );
+            foreach(array_keys($intQueue) AS $key)
+              for($i=0;$i<count($intQueue[$key]);$i++)
+                fputs( $dump_fh, $key.' - '.$intQueue[$key][$i]."\n" );
             fclose( $dump_fh );
           }
         }
@@ -338,8 +390,9 @@
             $dump_fh = fopen($logBase.'-extqueue.txt','a+');
             if( !$dump_fh )
               die('Failed to open '.$logBase.'-extqueue.txt');
-            for($i=0;$i<count($extQueue);$i++)
-              fputs( $dump_fh, $extQueue[$i]."\n" );
+            foreach(array_keys($extQueue) AS $key)
+              for($i=0;$i<count($extQueue[$key]);$i++)
+                fputs( $dump_fh, $key.' - '.$extQueue[$key][$i]."\n" );
             fclose( $dump_fh );
           }
         }
@@ -363,13 +416,13 @@
         ob_start();
         echo "<p><b>Total Links Found:</b></p>";
         echo "<table summary=\"Result Totals\" class=\"thin\">";
-        echo "<tr><td>Total Links:</td><td>".(count($intHistory) + count($intQueue) + count($extQueue))."</td></tr>\n";
-        echo "<tr><td>Local Links:</td><td>".(count($intHistory) + count($intQueue))."</td></tr>\n";
+        echo "<tr><td>Total Links:</td><td>".(count($intHistory) + $intQueueTotal + $extQueueTotal)."</td></tr>\n";
+        echo "<tr><td>Local Links:</td><td>".(count($intHistory) + $intQueueTotal)."</td></tr>\n";
         echo "<tr><td>Local Processed:</td><td>".(count($intHistory))."</td></tr>\n";
-        echo "<tr><td>Local Skipped:</td><td>".(count($intQueue))."</td></tr>\n";
-        echo "<tr><td>External Links:</td><td>".(count($extHistory) + count($extQueue))."</td></tr>\n";
+        echo "<tr><td>Local Skipped:</td><td>".($intQueueTotal)."</td></tr>\n";
+        echo "<tr><td>External Links:</td><td>".(count($extHistory) + $extQueueTotal)."</td></tr>\n";
         echo "<tr><td>External Processed:</td><td>".(count($extHistory))."</td></tr>\n";
-        echo "<tr><td>External Skipped:</td><td>".(count($extQueue))."</td></tr>\n";
+        echo "<tr><td>External Skipped:</td><td>".($extQueueTotal)."</td></tr>\n";
         echo "</table>";
         $html = ob_get_clean();
         if( $logActive )
@@ -442,3 +495,15 @@
   echo '</div>';
 
 // ---- END ---------------------------------------
+
+  function inExistingQueue( $link, &$active, &$history ){
+    foreach( array_keys($active) AS $key ){
+      if( in_array($link, $active[$key]) ){
+        return true;
+      }
+    }
+    if( in_array($link, $history) ){
+      return true;
+    }
+    return false;
+  }
