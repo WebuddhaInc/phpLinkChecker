@@ -25,6 +25,18 @@ fieldset label {
   font-weight:bold;
 }
 
+#followPage {
+  position:fixed;
+  right:0;
+  top:0;
+  background:#e0e0e0;
+  padding:10px 20px;
+  border-bottom:5px solid #fff;
+  border-left:5px solid #fff;
+  text-align: right;
+  box-shadow: 0 0 10px 0 rgba(0,0,0,0.5);
+}
+
 table.wide {
   width:100%;
 }

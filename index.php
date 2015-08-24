@@ -112,7 +112,14 @@
   if( !is_null($uri) ) {
 
     // Start Scrolling
-      echo "<script> winScrollTimer = setTimeout('doWinScroll();',1000); </script>\n\n";
+      ?>
+      <div id="followPage">
+        <h3><?php echo $uri ?></h3>
+        <label for="auto_scroll">Auto Scroll:</label>
+        <input type="checkbox" name="auto_scroll" id="auto_scroll" checked />
+      </div>
+      <script> winScrollTimer = setTimeout('doWinScroll();',1000); </script>
+      <?php
 
     // Open Log
       if( $logActive ){

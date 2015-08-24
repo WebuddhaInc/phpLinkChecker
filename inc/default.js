@@ -15,11 +15,13 @@ function doWinScroll(){
     getOffsetParent
   */
 
-  var doc = $(document.body);
-  var dim = doc.getScrollSize();
-  var scr = doc.getScroll();
-  if( scr.y < dim.y )
-    scrollTo( 0, dim.y );
+  if( document.getElementById('auto_scroll').checked ){
+    var doc = $(document.body);
+    var dim = doc.getScrollSize();
+    var scr = doc.getScroll();
+    if( scr.y < dim.y )
+      scrollTo( 0, dim.y );
+  }
   winScrollTimer = setTimeout('doWinScroll();',1000);
 
 }
