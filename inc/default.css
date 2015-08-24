@@ -1,0 +1,60 @@
+body {
+  font-family:verdana;
+}
+form {
+  padding:0;
+  margin:0;
+}
+fieldset {
+  border:1px solid #999;
+  padding:10px;
+}
+fieldset legend {
+  font-size:18px;
+  font-weight:bold;
+  color:#000099;
+  padding:0 10px;
+  border:1px solid #999;
+}
+fieldset label {
+  font-weight:bold;
+}
+
+table.wide {
+  width:100%;
+}
+table.wide tr th {
+  padding:2px 4px;
+  font-size:14px;
+  font-weight:bold;
+  border-bottom:2px solid #999;
+  text-align:left;
+}
+table.wide tr td {
+  padding:2px 4px;
+  font-size:12px;
+  border-bottom:1px dotted #999;
+  text-align:left;
+}
+table.wide tr.res_alt td {
+  background:#99F;
+}
+table.wide tr.code_404 td {
+  background:#F99;
+}
+
+table.thin {
+}
+table.thin tr th {
+  padding:2px 4px;
+  font-size:14px;
+  font-weight:bold;
+  border-bottom:2px solid #999;
+  text-align:left;
+}
+table.thin tr td {
+  padding:2px 4px;
+  font-size:12px;
+  border-bottom:1px dotted #999;
+  text-align:left;
+}
