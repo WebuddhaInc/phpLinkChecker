@@ -19,9 +19,11 @@
 
 // ------------------------------------------------
 // Get Links from URL
-  function GetPageLinks($url) {
+  function GetPageLinks($url, $validMeta) {
     $text = implode("", file($url));
     $text = eregi_replace("<!--([^-]|-[^-]|--[^>])*-->","", $text);
+    $text = preg_replace('#<script>(.*?)</script>#is', '', $text);
+    $text = preg_replace('#<script type="text/javascript">(.*?)</script>#is', '', $text);
 
     $baseUrl  = null;
     $baseInfo = Array();
@@ -74,8 +76,79 @@
         $retList[] = $temp;
     }
 
+    $retList = array_filter( $retList, function($key) use (&$validMeta){
+      $url = parse_url( $key );
+      $ext = preg_replace('/^.*\.([A-Za-z0-9]+)($|\?.*$)/', '$1', $url['path']);
+      if( $url['path'] == $ext ){
+        return true;
+      }
+      $ext = strtolower($ext);
+
+      // css
+        if( in_array($ext, array('css')) && !in_array('css', $validMeta) ){
+          return false;
+        }
+
+      // script
+        if( in_array($ext, array('js')) && !in_array('script', $validMeta) ){
+          return false;
+        }
+
+      // image
+        if( in_array($ext, array('ico','bmp','gif','jpg','png','psd','pspimage','thm','tif','yuv','svg')) && !in_array('image', $validMeta) ){
+          return false;
+        }
+
+      // media
+        if( in_array($ext, array(
+              '3g2','3gp','asf','avi','drc','f4a','f4b','f4v','flv','gif','gifv','m2v','m4p','m4v','mkv','mng','mov','mp2',
+              'mp4','mpe','mpeg','mpg','mpv','mxf','nsv','ogg','ogv','qt','rm','rmvb','roq','svi','vob','vob','webm','wmv','yuv',
+              'aif','iff','m3u','m4a','mid','mp3','mpa','ra','wav','wma','ttf'
+              )) && !in_array('media', $validMeta) ){
+          return false;
+        }
+
+      // default
+        return true;
+
+      /*
+      foreach( $validMeta AS $validMetaKey ){
+        switch( $validMetaKey ){
+          case 'css':
+            if( in_array($ext, array('css')) ){
+              return true;
+            }
+            break;
+          case 'script':
+            if( in_array($ext, array('js')) ){
+              return true;
+            }
+            break;
+          case 'image':
+            if( in_array($ext, array('ico','bmp','gif','jpg','png','psd','pspimage','thm','tif','yuv','svg')) ){
+              return true;
+            }
+            break;
+          case 'media':
+            if( in_array($ext, array(
+              '3g2','3gp','asf','avi','drc','f4a','f4b','f4v','flv','gif','gifv','m2v','m4p','m4v','mkv','mng','mov','mp2',
+              'mp4','mpe','mpeg','mpg','mpv','mxf','nsv','ogg','ogv','qt','rm','rmvb','roq','svi','vob','vob','webm','wmv','yuv',
+              'aif','iff','m3u','m4a','mid','mp3','mpa','ra','wav','wma','ttf'
+              )) ){
+              return true;
+            }
+            break;
+        }
+      }
+      return false;
+      */
+
+    });
+
+    $retList = array_values($retList);
     if (count($retList) != 0)
       return $retList;
+
     return false;
   }
 
@@ -91,6 +164,9 @@
     // echo $base.' -> '.$path .'<br>';
     if (ereg("^/", $path)) {
       $base = ereg_replace("^(http://([^/]+))/{1}(.*)", "\\1", $base);
+    }
+    if( strpos($path, '//') === 0 ){
+      return preg_replace('/^(\w+\:).*$/','$1',$base).$path;
     }
     // echo $base.$path .'<br>';
     return $base.$path;
@@ -163,11 +239,11 @@
         list($brugernavn, $host) = split("@", $url);
         $dnsCheck = checkdnsrr($host,"MX");
         if ($dnsCheck)
-          $urlInfo[code] = "OK";
+          $urlInfo['code'] = "OK";
         else
-          $urlInfo[code] = "ERROR";
+          $urlInfo['code'] = "ERROR";
       } else
-        $urlInfo[code] = "N/A";
+        $urlInfo['code'] = "N/A";
     } else {
       $urlArray = parse_url($url);
       if (!$urlArray[port])
@@ -176,7 +252,7 @@
         $urlArray[path] = "/";
       $sock = fsockopen($urlArray[host], $urlArray[port], $errnum, $errstr, 10);
       if (!$sock)
-        $urlInfo[code] = "Død";
+        $urlInfo['code'] = "Død";
       else {
         $dump .= "HEAD $urlArray[path] HTTP/1.1\r\n";
         $dump .= "User-Agent: ".( LC_USERAGENT === false ? $_SERVER['HTTP_USER_AGENT'] : LC_USERAGENT )."\r\n";
@@ -186,9 +262,11 @@
         fputs($sock, $dump);
         while($str = fgets($sock, 1024)) {
           if (eregi("^http/[0-9]+.[0-9]+ ([0-9]{3}) [a-z ]*", $str))
-            $urlInfo[code] = trim(eregi_replace("^http/[0-9]+.[0-9]+ ([0-9]{3}) [a-z ]*", "\\1", $str));
+            $urlInfo['code'] = trim(eregi_replace("^http/[0-9]+.[0-9]+ ([0-9]{3}) [a-z ]*", "\\1", $str));
+          if (eregi("^Last-Modified: ", $str))
+            $urlInfo['lastModified'] = gmdate('Y-m-d H:i:s', strtotime(trim(eregi_replace("^Last-Modified: ", "", $str))));
           if (eregi("^Content-Type: ", $str))
-            $urlInfo[contentType] = trim(eregi_replace("^Content-Type: ", "", $str));
+            $urlInfo['contentType'] = trim(eregi_replace("^Content-Type: ", "", $str));
         }
         fclose($sock);
         flush();

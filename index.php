@@ -1,5 +1,12 @@
 <?php
 
+// Flush
+  @ob_end_clean();
+  @ob_flush();
+  @ini_set('zlib.output_compression',0);
+  @ini_set('implicit_flush',1);
+  echo str_pad(' ',1024);
+
 // ------------------------------------------------
 // Inspect
   function inspect(){
@@ -28,11 +35,13 @@
 
 // ------------------------------------------------
 // Load Variables
-  $baseName = basename($_SERVER['PHP_SELF']);
-  $url      = trim($_POST['url']);
-  $urlInfo  = Array();
-  $urlHost  = null;
-  $uri      = null;
+  $baseName      = basename($_SERVER['PHP_SELF']);
+  $url           = trim($_POST['url']);
+  $urlInfo       = array();
+  $urlHost       = null;
+  $uri           = null;
+  $siteMapActive = isset($_REQUEST['siteMapActive']) ? $_REQUEST['siteMapActive'] : false;
+  $metaType      = isset($_REQUEST['metaType']) ? (array)$_REQUEST['metaType'] : array();
 
 // ------------------------------------------------
 // Clean / Validate URL
@@ -40,30 +49,30 @@
     $url = "http://$url";
   if ($url && (eregi("^(http|https)://[0-9a-z.-@:]+", $url) || !eregi("^(http|https)://.*/.*[|><]", $url))) {
     $urlInfo = parse_url($url);
-    if(!$urlInfo[port])
-      switch($urlInfo[scheme]){
+    if(!$urlInfo['port'])
+      switch($urlInfo['scheme']){
         case 'https':
-          $urlInfo[port] = "443";
+          $urlInfo['port'] = "443";
           break;
         default:
         case 'http':
-          $urlInfo[port] = "80";
+          $urlInfo['port'] = "80";
           break;
       }
-    if(!$urlInfo[path])
-      $urlInfo[path] = "/";
-    if($urlInfo[query])
-      $urlInfo[path] .= "?$urlInfo[query]";
-    if($urlInfo[host]){
+    if(!$urlInfo['path'])
+      $urlInfo['path'] = "/";
+    if($urlInfo['query'])
+      $urlInfo['path'] .= "?$urlInfo[query]";
+    if($urlInfo['host']){
       $urlInfo['host'] = strtolower($urlInfo['host']);
       if( preg_match('/^[\w\-\d]+\.[\w\-\d]+$/',$urlInfo['host']) )
         $urlInfo['host'] = 'www.'.$urlInfo['host'];
-      $urlHost = $urlInfo[host];
-      $uri = $urlInfo[scheme]
+      $urlHost = $urlInfo['host'];
+      $uri = $urlInfo['scheme']
            . '://'
            . $extra
-           . $urlInfo[host]
-           . $urlInfo[path]
+           . $urlInfo['host']
+           . $urlInfo['path']
            ;
       $steps = array();
       $stamp = microtime(true);
@@ -88,6 +97,10 @@
   $logBase    = 'log/'.$urlHost.'-'.date('Ymd-h');
 
 // ------------------------------------------------
+// XML Sitemap File
+  $siteMapFile   = 'sitemap/'.$urlHost.'-'.date('Ymd-h').'.xml';
+
+// ------------------------------------------------
 // Page Wrapper
   echo '<div class="mainblockcent">';
 
@@ -100,12 +113,25 @@
   <fieldset>
     <legend>Webuddha Link Validation</legend>
     <form action="<?= $baseName ?>" name="submitform" method="POST">
-      <label for="url">Enter URL:</label>
-        <input name="url" id="url" size="40" value="<?= ($uri ? $uri : 'ie: http://www.website.com/') ?>" onclick="if(/^ie:/.test(this.value))this.value='';" />
+      <div>
+        <label for="url">Enter URL:</label>
+        <input type="text" name="url" id="url" size="40" value="<?= ($uri ? $uri : 'ie: http://www.website.com/') ?>" onclick="if(/^ie:/.test(this.value))this.value='';" />
+      </div>
+      <div>
+        <label for="siteMapActive">Generate Sitemap:</label>
+        <input type="checkbox" name="siteMapActive" id="siteMapActive" value="1" <?= (!empty($siteMapActive)?'checked':'') ?>/>
+      </div>
+      <div>
+        <label for="siteMapActive">Validate Content Types:</label>
+        <input type="checkbox" name="metaType[css]" id="metaType_css" value="1" <?= (!empty($metaType['css'])?'checked':'') ?>/> CSS
+        <input type="checkbox" name="metaType[script]" id="metaType_script" value="1" <?= (!empty($metaType['script'])?'checked':'') ?>/> Scripts
+        <input type="checkbox" name="metaType[image]" id="metaType_image" value="1" <?= (!empty($metaType['image'])?'checked':'') ?>/> Images
+      </div>
       <input type="submit" valuve="  Process  " />
     </form>
   </fieldset>
 <?php
+  ob_flush(); flush();
 
 // ------------------------------------------------
 // Process Valid URL
@@ -128,8 +154,24 @@
           die('Failed to open '.$logBase.'-log.csv');
       }
 
+    // Check URL
+      $check = checkUrl($uri);
+
+    // Start Sitemap XML
+      if( $siteMapActive ){
+        $siteMapXML = new SimpleXMLElement(
+          '<?xml version="1.0" encoding="UTF-8"?>'
+          . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">'
+          . '</urlset>'
+          );
+        $urlNode = $siteMapXML->addChild('url');
+        $urlNode->addChild('loc', $uri);
+        $urlNode->addChild('lastmod', date('Y-m-d\TH:i:s+00:00', strtotime($check['lastModified'])));
+        $urlNode->addChild('changefreq', 'daily');
+      }
+
     // Pull Inital List
-    $urlList = GetPageLinks($uri);
+    $urlList = GetPageLinks($uri, array_keys($metaType));
     if(is_array($urlList)) {
 
       // Process Links
@@ -157,7 +199,7 @@
         }
 
       // Header
-        echo "<h3>Processing ".count($intQueue)." Internal and ".count($extQueue)." External Links ~ ".round($loadtime,3)."s</h3>";
+        echo "<h3>Processing ".count($intQueue[$uri])." Internal and ".count($extQueue[$uri])." External Links ~ ".round($loadtime,3)."s</h3>";
 
       // Print Log Header
         if( $logActive )
@@ -275,10 +317,23 @@
           else
             $urlPrint = '<a href="'.$queLink.'" target="_blank">'.rawurldecode($queLink).'</a>';
 
+        // Push to Sitemap if Internal Content
+          if(
+            $siteMapActive
+            && $urlHost == $queInfo['host']
+            && eregi("^text/html", $contentType)
+            && $code == 200
+            ){
+            $urlNode = $siteMapXML->addChild('url');
+            $urlNode->addChild('loc', $queLink);
+            $urlNode->addChild('lastmod', date('Y-m-d\TH:i:s+00:00', strtotime($check['lastModified'])));
+            $urlNode->addChild('changefreq', 'daily');
+          }
+
         // Extract Links
           if( $intMode && eregi("^text/html", $contentType) && ($code==200) ){
             if( $urlHost == $queInfo['host'] ){
-              $resLinks = GetPageLinks($queLink);
+              $resLinks = GetPageLinks($queLink, array_keys($metaType));
               if(is_array($resLinks)){
                 foreach($resLinks AS $val){
                   $valInfo = parse_url($val);
@@ -347,7 +402,7 @@
             <td>'.(is_null($resLinks)?'&nbsp;':count($resLinks)).'</td>
             <td>'.round($loadtime,3).'s</td>
           </tr>';
-          flush();
+          ob_flush(); flush();
 
         // Increment Log
           $statCode[$code]++;
@@ -409,6 +464,25 @@
           $report_fh = fopen($logBase.'-report.html','a+');
           if( !$report_fh )
             die('Failed to open '.$logBase.'-report.html');
+        }
+
+      // Dump Sitemap
+        if( $siteMapActive ){
+
+          // Store
+            if( $siteMap_fh = fopen( $siteMapFile, 'w' ) ){
+              fwrite( $siteMap_fh, str_replace('><', ">\n<", $siteMapXML->asXML()) );
+              fclose( $siteMap_fh );
+            }
+
+          // Print Result Summary
+            ob_start();
+            echo "<p><b>Download Sitemap:</b> <a href={$siteMapFile}>{$siteMapFile}</a></p>";
+            $html = ob_get_clean();
+            if( $logActive )
+              fputs( $report_fh, $html."\n" );
+            echo $html;
+
         }
 
       // Total Time Elapsed
